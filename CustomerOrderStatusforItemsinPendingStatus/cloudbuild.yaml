@@ -1,0 +1,40 @@
+steps:
+  # Build the C# application and its container image.
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -t
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_JOB}:$COMMIT_SHA
+      - .
+
+  # Upload the image to Artifact Registry.
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - push
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_JOB}:$COMMIT_SHA
+
+  # Create or update the Cloud Run job.
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    entrypoint: gcloud
+    args:
+      - run
+      - jobs
+      - deploy
+      - ${_JOB}
+      - --project=$PROJECT_ID
+      - --image=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_JOB}:$COMMIT_SHA
+      - --region=${_REGION}
+      - --service-account=netsuite-job-runtime@$PROJECT_ID.iam.gserviceaccount.com
+      - --tasks=1
+      - --parallelism=1
+      - --max-retries=0
+      - --task-timeout=1800s
+      - --quiet
+
+substitutions:
+  _REGION: us-central1
+  _REPOSITORY: netsuite-jobs
+  _JOB: netsuite-on-hold-inventory
+
+options:
+  logging: CLOUD_LOGGING_ONLY
