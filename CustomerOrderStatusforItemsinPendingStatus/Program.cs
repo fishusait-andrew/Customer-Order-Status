@@ -309,6 +309,8 @@ internal static class Program
 
         foreach (var order in PendingCartTranferOrders)
         {
+            try
+            {
             //Elliminating any wholesale order.
             if (order.IsWholesale == false)
             {
@@ -341,6 +343,11 @@ internal static class Program
             {
                 Console.WriteLine($"INFO Phase=WholesalePendingCartExit Event=DecisionPath Path=SecondShipment OrderId={order.InternalId} OrderNumber={order.OrderNumber} UncommittedLines={order.UncommittedItems.Count}");
                 await WsOrderSecondShipmentDecisionPath(order, itemInventoryData, http, baseUrl, WsBackorderStatusId);
+            }
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"ERROR Phase=WholesalePendingCartExit Event=OrderProcessingFailed OrderId={order.InternalId} OrderNumber={order.OrderNumber} ExceptionType={ex.GetType().Name} Message={ex.Message}");
             }
         }
     }
@@ -444,6 +451,7 @@ internal static class Program
         catch (Exception ex)
         {
             Console.Error.WriteLine($"ERROR Phase=WholesalePendingCartExit Event=OrderUpdateFailed OrderId={orderInternalId} TargetStatusId={id} ExceptionType={ex.GetType().Name} Message={ex.Message}");
+            throw;
         }
     }
 
@@ -468,6 +476,8 @@ internal static class Program
         //If they make it to the end, they will be updated in netsuite.
         foreach(var order in PendingCartTranferOrders)
         {
+            try
+            {
             //Elliminating any wholesale order.
             if (order.IsWholesale == true)
             {
@@ -535,6 +545,11 @@ internal static class Program
             //Send patch to SO to update the fields.
             Console.WriteLine($"INFO Phase=RetailPendingCartExit Event=OrderQualified TargetStatusId={BackorderPendingReviewId} OrderId={order.InternalId} OrderNumber={order.OrderNumber} UncommittedLines={order.UncommittedItems.Count}");
             await UpdateOrderToBackorderPendingReview(http, baseUrl, BackorderPendingReviewId, order.InternalId);
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"ERROR Phase=RetailPendingCartExit Event=OrderProcessingFailed OrderId={order.InternalId} OrderNumber={order.OrderNumber} ExceptionType={ex.GetType().Name} Message={ex.Message}");
+            }
         }
     }
     private static async Task UpdateOrderToBackorderPendingReview(HttpClient http, string baseUrl, string BackorderPendingReviewId, long orderInternalId)
@@ -562,6 +577,7 @@ internal static class Program
         catch (Exception ex)
         {
             Console.Error.WriteLine($"ERROR Phase=RetailPendingCartExit Event=OrderUpdateFailed OrderId={orderInternalId} TargetStatusId={BackorderPendingReviewId} ExceptionType={ex.GetType().Name} Message={ex.Message}");
+            throw;
         }
     }
 
@@ -584,6 +600,8 @@ internal static class Program
 
         foreach(var order in nonPendingCartTranferOrders)
         {
+            try
+            {
             //Checking for inventory data and skipping the SO if any item on it has no corresponsing inventory data.
             //This is done to avoid making decisions on not existing data.
             if (order.HasIncompleteItemData == true)
@@ -639,6 +657,11 @@ internal static class Program
             //Since the order is awaiting a cart transfer, we need to change the status
             //  and then uncheck ready to fulfill so the order does not get picked.
             await UpdateOrderToPendingCartTransferAndUncheckReadyToFulfill(http, baseUrl, order.InternalId, PendingCartTransferId);
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"ERROR Phase=PendingCartEntry Event=OrderProcessingFailed OrderId={order.InternalId} OrderNumber={order.OrderNumber} ExceptionType={ex.GetType().Name} Message={ex.Message}");
+            }
         }
     }
 
@@ -668,6 +691,7 @@ internal static class Program
         catch (Exception ex)
         {
             Console.Error.WriteLine($"ERROR Phase=PendingCartEntry Event=OrderUpdateFailed OrderId={orderInternalId} TargetStatusId={pendingCartTransferId} ExceptionType={ex.GetType().Name} Message={ex.Message}");
+            throw;
         }
     }
 
@@ -721,6 +745,8 @@ internal static class Program
 
             foreach (long itemId in batch)
             {
+                try
+                {
                 // Find the item record.
                 JsonElement itemRow = itemRows.Find(row => ReadValue(row, "id") == itemId.ToString(System.Globalization.CultureInfo.InvariantCulture));
 
@@ -779,6 +805,11 @@ internal static class Program
 
                 item.RetrievalSucceeded = true;
                 items.Add(item);
+                }
+                catch (Exception ex)
+                {
+                    Console.Error.WriteLine($"ERROR Phase=InventoryRetrieval Event=ItemProcessingFailed ItemId={itemId} ExceptionType={ex.GetType().Name} Message={ex.Message}");
+                }
             }
 
             Console.WriteLine($"INFO Phase=InventoryRetrieval Event=BatchCompleted ItemCount={batch.Length} TotalStored={items.Count}");
