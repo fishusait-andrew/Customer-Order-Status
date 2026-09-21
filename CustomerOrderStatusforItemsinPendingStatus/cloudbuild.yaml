@@ -32,7 +32,7 @@ steps:
       - --quiet
 
 substitutions:
-  _REGION: us-central1
+  _REGION: us-east1
   _REPOSITORY: cloud-run-source-deploy
   _JOB: customer-order-status
 
