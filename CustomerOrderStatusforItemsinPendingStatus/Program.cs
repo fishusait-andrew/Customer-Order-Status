@@ -174,13 +174,13 @@ internal static class Program
     {
         try
         {
-            bool isDebug = false;
+            bool isDebug = true;
             Console.WriteLine($"INFO Event=RunStarted Utc={DateTimeOffset.UtcNow:O}");
 
             if (isDebug)
             {
                 //Cloudrun will not use local files but this enables easy local testing.
-                string envPath = "C:/Users/Andrew/Desktop/CloudRun Keys/On Hold Inventory/on-hold-inv.env";
+                string envPath = "C:/Users/Andrew/Desktop/CloudRun Keys/On Hold Inventory/on-hold-inv-prod.env";
                 LoadEnvFile(envPath);
             }
 
@@ -1085,7 +1085,10 @@ internal static class Program
 
         using var rsa = RSA.Create();
 
-        string privateKey = await File.ReadAllTextAsync(privateKeyPath);
+        //string privateKey = await File.ReadAllTextAsync(privateKeyPath);
+        //Uncomment for local testing.
+
+        string privateKey = privateKeyPath;
         rsa.ImportFromPem(privateKey);
 
         byte[] signature = rsa.SignData(Encoding.UTF8.GetBytes(unsignedJwt), HashAlgorithmName.SHA256, RSASignaturePadding.Pss);
