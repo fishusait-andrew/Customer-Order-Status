@@ -187,7 +187,7 @@ internal static class Program
             string accountId = Required("NETSUITE_ACCOUNT_ID");
             string clientId = Required("NETSUITE_CLIENT_ID");
             string certificateId = Required("NETSUITE_CERTIFICATE_ID");
-            string privateKeyPath = Required("NETSUITE_PRIVATE_KEY_PATH");
+            string privateKeyPath = Required("NETSUITE_PRIVATE_KEY");
 
             string accountDomain = accountId.Trim().ToLowerInvariant().Replace('_', '-');
             string baseUrl = $"https://{accountDomain}.suitetalk.api.netsuite.com";
