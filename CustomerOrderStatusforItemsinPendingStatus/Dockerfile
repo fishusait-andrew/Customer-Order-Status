@@ -1,11 +1,11 @@
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
 
-COPY OnHoldInventory.csproj ./
-RUN dotnet restore OnHoldInventory.csproj
+COPY CustomerOrderStatusforItemsInPendingStatus.csproj ./
+RUN dotnet restore CustomerOrderStatusforItemsInPendingStatus.csproj
 
 COPY . ./
-RUN dotnet publish OnHoldInventory.csproj \
+RUN dotnet publish CustomerOrderStatusforItemsInPendingStatus.csproj \
     --configuration Release \
     --output /app/publish \
     --no-restore \
@@ -17,4 +17,4 @@ WORKDIR /app
 COPY --from=build /app/publish ./
 
 USER app
-ENTRYPOINT ["dotnet", "OnHoldInventory.dll"]
+ENTRYPOINT ["dotnet", "CustomerOrderStatusforItemsInPendingStatus.dll"]
