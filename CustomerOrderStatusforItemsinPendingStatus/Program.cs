@@ -654,7 +654,7 @@ internal static class Program
                 }
 
                 //If this is greater than 0 then we have an uncommitted available quanitity somewhere(A cart) which means we should keep moving
-                if((matchingInventory.TotalQuantityOnHand - matchingInventory.OnHoldInventory) > 0)
+                if (matchingInventory.Balances.Any(balance => balance.InventoryStatusId == 4 && balance.QuantityOnHand > 0))
                 {
                     hasQualifyingPendingItem = true;
                 }
