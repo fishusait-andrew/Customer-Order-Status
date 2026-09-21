@@ -32,7 +32,6 @@ internal static class Program
         public bool IsWholesale { get; set; }
         public bool FirstShipment { get; set; }
 
-        // Do not make status decisions when a line could not be classified.
         public bool HasIncompleteItemData { get; set; }
 
         public List<OrderItem> Items { get; set; } = new();
@@ -73,8 +72,6 @@ internal static class Program
 
         // Set this explicitly when parsing the item type.
         public bool RequiresInventoryCommitment { get; set; }
-
-        // Normalize these quantities to the same units when parsing.
         public decimal QuantityOrdered { get; set; }
         public decimal QuantityShipped { get; set; }
         public decimal QuantityCommitted { get; set; }
@@ -153,13 +150,9 @@ internal static class Program
     {
         public long OrderInternalId { get; set; }
         public string OrderNumber { get; set; } = string.Empty;
-
         public string PreviousStatusId { get; set; } = string.Empty;
         public string NewStatusId { get; set; } = string.Empty;
-
-        // null = leave unchanged; false = uncheck; true = check.
         public bool? NewReadyToFulfill { get; set; }
-
         public string Reason { get; set; } = string.Empty;
         public List<long> RelevantItemIds { get; set; } = new();
     }
@@ -177,22 +170,24 @@ internal static class Program
     //pending and available inventory statuses
     //On hold inventory
 
-
-
     private static async Task Main(string[] args)
     {
         try
         {
+            bool isDebug = false;
             Console.WriteLine($"INFO Event=RunStarted Utc={DateTimeOffset.UtcNow:O}");
 
-            string envPath = "C:/Users/Andrew/Desktop/CloudRun Keys/On Hold Inventory/on-hold-inv.env";
-
-            LoadEnvFile(envPath);
+            if (isDebug)
+            {
+                //Cloudrun will not use local files but this enables easy local testing.
+                string envPath = "C:/Users/Andrew/Desktop/CloudRun Keys/On Hold Inventory/on-hold-inv.env";
+                LoadEnvFile(envPath);
+            }
 
             string accountId = Required("NETSUITE_ACCOUNT_ID");
             string clientId = Required("NETSUITE_CLIENT_ID");
             string certificateId = Required("NETSUITE_CERTIFICATE_ID");
-            string privateKeyPath = GetPrivateKeyPath(envPath);
+            string privateKeyPath = Required("NETSUITE_PRIVATE_KEY_PATH");
 
             string accountDomain = accountId.Trim().ToLowerInvariant().Replace('_', '-');
             string baseUrl = $"https://{accountDomain}.suitetalk.api.netsuite.com";
@@ -1108,18 +1103,6 @@ internal static class Program
         }
 
         return body;
-    }
-
-    private static string GetPrivateKeyPath(string envPath)
-    {
-        string privateKeyPath = Required("NETSUITE_PRIVATE_KEY_PATH");
-
-        if (!Path.IsPathRooted(privateKeyPath))
-        {
-            privateKeyPath = Path.GetFullPath(privateKeyPath, Path.GetDirectoryName(envPath)!);
-        }
-
-        return privateKeyPath;
     }
 
     private static string Required(string name)
