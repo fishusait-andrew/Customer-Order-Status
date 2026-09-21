@@ -24,7 +24,6 @@ steps:
       - --project=$PROJECT_ID
       - --image=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_JOB}:$COMMIT_SHA
       - --region=${_REGION}
-      - --service-account=netsuite-job-runtime@$PROJECT_ID.iam.gserviceaccount.com
       - --tasks=1
       - --parallelism=1
       - --max-retries=0
