@@ -1,6 +1,6 @@
 steps:
-  # Build the C# application and its container image.
   - name: gcr.io/cloud-builders/docker
+    dir: CustomerOrderStatusforItemsinPendingStatus
     args:
       - build
       - -t
