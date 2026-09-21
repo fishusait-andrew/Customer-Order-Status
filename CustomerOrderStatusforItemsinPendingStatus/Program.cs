@@ -135,6 +135,23 @@ internal static class Program
         public decimal QuantityOnHand { get; set; }
     }
 
+    private static void LogOrderDetails(string phase, SO order, List<ItemInventory> itemInventoryData)
+    {
+        int inventoryItemsFound = 0, inventoryItemsMissing = 0;
+        decimal totalOnHand = 0m, onHold = 0m, proShopOnHand = 0m;
+        decimal availableOnHand = 0m, pendingOnHand = 0m, nonAvailableOnHand = 0m;
+        foreach (long itemId in order.UncommittedItems.Select(item => item.ItemInternalId).Distinct())
+        {
+            ItemInventory? inventory = itemInventoryData.Find(item => item.ItemInternalId == itemId);
+            if (inventory == null || !inventory.RetrievalSucceeded) { inventoryItemsMissing++; continue; }
+            inventoryItemsFound++;
+            totalOnHand += inventory.TotalQuantityOnHand; onHold += inventory.OnHoldInventory; proShopOnHand += inventory.ProShopQuantityOnHand;
+            availableOnHand += inventory.Balances.Where(balance => balance.InventoryStatusId == 1).Sum(balance => balance.QuantityOnHand); pendingOnHand += inventory.Balances.Where(balance => balance.InventoryStatusId == 4).Sum(balance => balance.QuantityOnHand); nonAvailableOnHand += inventory.Balances.Where(balance => balance.InventoryStatusId != 1).Sum(balance => balance.QuantityOnHand);
+        }
+
+        Console.WriteLine($"INFO Phase={phase} Event=OrderDetails OrderId={order.InternalId} OrderNumber={order.OrderNumber} CurrentStatusId={order.CustomerOrderStatusId} ReadyToFulfill={order.ReadyToFulfill} IsWholesale={order.IsWholesale} FirstShipment={order.FirstShipment} HasIncompleteItemData={order.HasIncompleteItemData} ItemLines={order.Items.Count} UncommittedLines={order.UncommittedItems.Count} QuantityOrdered={order.Items.Sum(item => item.QuantityOrdered)} QuantityShipped={order.Items.Sum(item => item.QuantityShipped)} QuantityCommitted={order.Items.Sum(item => item.QuantityCommitted)} RemainingQuantity={order.Items.Sum(item => item.RemainingQuantity)} UncommittedQuantity={order.Items.Sum(item => item.UncommittedQuantity)} InventoryItemsFound={inventoryItemsFound} InventoryItemsMissing={inventoryItemsMissing} TotalOnHand={totalOnHand} OnHold={onHold} OnHandExcludingHold={totalOnHand - onHold} ProShopOnHand={proShopOnHand} AvailableOnHand={availableOnHand} PendingOnHand={pendingOnHand} NonAvailableOnHand={nonAvailableOnHand}");
+    }
+
     private class CustomFieldIds
     {
         public string CustomerOrderStatus { get; set; } = string.Empty;
@@ -306,6 +323,7 @@ internal static class Program
         {
             try
             {
+                LogOrderDetails("WholesalePendingCartExit", order, itemInventoryData);
             //Elliminating any wholesale order.
             if (order.IsWholesale == false)
             {
@@ -473,6 +491,7 @@ internal static class Program
         {
             try
             {
+                LogOrderDetails("RetailPendingCartExit", order, itemInventoryData);
             //Elliminating any wholesale order.
             if (order.IsWholesale == true)
             {
@@ -597,6 +616,7 @@ internal static class Program
         {
             try
             {
+                LogOrderDetails("PendingCartEntry", order, itemInventoryData);
             //Checking for inventory data and skipping the SO if any item on it has no corresponsing inventory data.
             //This is done to avoid making decisions on not existing data.
             if (order.HasIncompleteItemData == true)
