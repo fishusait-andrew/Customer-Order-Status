@@ -1,4 +1,4 @@
-.vs/
-.env/
-bin/
-obj/
+.vs
+.env
+bin
+obj

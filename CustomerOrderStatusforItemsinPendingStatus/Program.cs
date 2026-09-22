@@ -12,11 +12,8 @@ using System.Threading.Tasks;
 
 internal static class Program
 {
-    // Confirmed shipping-related item IDs; retain lines without inventory commitment.
-    private static readonly HashSet<long> ShippingItemIds = new()
-    {
-        165813, 165811, 165809, 165812, 165807, 165808, 1473396, 1572180, 318367, 1256377, 1256376, 81193, 524713, 81185, 81184
-    };
+    //Set this tp true or false depending on if this needs run on cloud vs local.
+    private static readonly bool isDebug = false;
     //SO Class
     //List of items
     //List of uncommited items
@@ -191,20 +188,28 @@ internal static class Program
     {
         try
         {
-            bool isDebug = true;
             Console.WriteLine($"INFO Event=RunStarted Utc={DateTimeOffset.UtcNow:O}");
 
             if (isDebug)
             {
                 //Cloudrun will not use local files but this enables easy local testing.
-                string envPath = "C:/Users/Andrew/Desktop/CloudRun Keys/On Hold Inventory/on-hold-inv-prod.env";
+                string envPath = "C:/Keys/NetsuiteREST/on-hold-inv-prod.env";
                 LoadEnvFile(envPath);
             }
 
             string accountId = Required("NETSUITE_ACCOUNT_ID");
             string clientId = Required("NETSUITE_CLIENT_ID");
             string certificateId = Required("NETSUITE_CERTIFICATE_ID");
-            string privateKeyPath = Required("NETSUITE_PRIVATE_KEY");
+
+            string privateKeyPath;
+            if(isDebug)
+            {
+                privateKeyPath = Required("NETSUITE_PRIVATE_KEY_PATH");
+            }
+            else
+            {
+                privateKeyPath = Required("NETSUITE_PRIVATE_KEY");
+            }
 
             string accountDomain = accountId.Trim().ToLowerInvariant().Replace('_', '-');
             string baseUrl = $"https://{accountDomain}.suitetalk.api.netsuite.com";
@@ -253,7 +258,7 @@ internal static class Program
 
             //Remove shipping items from order item list. 
             //More ids can be added to the list above if we need to exclude certain things.
-            await RemovingUnwantedItemLinesFromList(orders, ShippingItemIds);
+            await RemovingUnwantedItemLinesFromList(orders);
 
             //Need to get each items inventory values
             long proShopLocationId = long.Parse(Required("NETSUITE_PRO_SHOP_LOCATION_ID"), System.Globalization.CultureInfo.InvariantCulture);
@@ -342,7 +347,7 @@ internal static class Program
             if (order.UncommittedItems.Count == 0)
             {
                 Console.WriteLine($"INFO Phase=WholesalePendingCartExit Event=OrderQualified Reason=FullyCommitted TargetStatusId={WsApprovedStatusId} OrderId={order.InternalId} OrderNumber={order.OrderNumber}");
-                await WsOrderUpdateById(http, baseUrl, WsApprovedStatusId, order.InternalId);
+                await WsOrderUpdateById(http, baseUrl, WsApprovedStatusId, order.InternalId, true);
                 continue;
             }
 
@@ -399,7 +404,7 @@ internal static class Program
         if(isAllAvailable)
         {
             Console.WriteLine($"INFO Phase=WholesalePendingCartExit Event=OrderQualified Path=FirstShipment TargetStatusId={WsApprovedId} OrderId={order.InternalId} OrderNumber={order.OrderNumber}");
-            await WsOrderUpdateById(http, baseUrl, WsApprovedId, order.InternalId);
+            await WsOrderUpdateById(http, baseUrl, WsApprovedId, order.InternalId, true);
         }
     }
 
@@ -437,10 +442,10 @@ internal static class Program
         if (isAllAvailable)
         {
             Console.WriteLine($"INFO Phase=WholesalePendingCartExit Event=OrderQualified Path=SecondShipment TargetStatusId={WsBackorderId} OrderId={order.InternalId} OrderNumber={order.OrderNumber}");
-            await WsOrderUpdateById(http, baseUrl, WsBackorderId, order.InternalId);
+            await WsOrderUpdateById(http, baseUrl, WsBackorderId, order.InternalId, true);
         }
     }
-    private static async Task WsOrderUpdateById(HttpClient http, string baseUrl, string id, long orderInternalId)
+    private static async Task WsOrderUpdateById(HttpClient http, string baseUrl, string id, long orderInternalId, bool readyToFulfill)
     {
         try
         {
@@ -450,6 +455,7 @@ internal static class Program
                 {
                     id = id
                 },
+                custbody_f_ready_to_fulfill = readyToFulfill
             };
 
             using var request = new HttpRequestMessage(HttpMethod.Patch, $"{baseUrl}/services/rest/record/v1/salesOrder/{orderInternalId}");
@@ -654,6 +660,7 @@ internal static class Program
                 }
 
                 //If this is greater than 0 then we have an uncommitted available quanitity somewhere(A cart) which means we should keep moving
+                //and we have an item in pending.
                 if (matchingInventory.Balances.Any(balance => balance.InventoryStatusId == 4 && balance.QuantityOnHand > 0))
                 {
                     hasQualifyingPendingItem = true;
@@ -710,13 +717,12 @@ internal static class Program
         }
     }
 
-    private static async Task RemovingUnwantedItemLinesFromList(List<SO> orders, HashSet<long> idsToRemove)
+    private static async Task RemovingUnwantedItemLinesFromList(List<SO> orders)
     {
-        foreach (var order in orders)
-        {
-            order.Items.RemoveAll(item => idsToRemove.Contains(item.ItemInternalId));
 
-            // Refresh this list so it no longer contains removed items.
+        foreach (SO order in orders)
+        {
+            order.Items.RemoveAll(item => !item.ItemType.Equals("InvtPart", StringComparison.OrdinalIgnoreCase));
             order.RefreshUncommittedItems();
         }
     }
@@ -867,27 +873,33 @@ internal static class Program
         }
 
         string query = $@"
-            SELECT t.id AS orderid, t.tranid AS ordernumber,
-                t.{fields.CustomerOrderStatus} AS customerorderstatusid,
-                NVL(t.{fields.ReadyToFulfill}, 'F') AS readytofulfill,
-                NVL(t.{fields.FirstShipment}, 'F') AS firstshipment,
-                CASE WHEN t.{fields.WholesaleFlag} = 4 THEN 'T' ELSE 'F' END AS iswholesale,
-                tl.id AS lineid, tl.item AS itemid, i.itemid AS itemname,
-                i.itemtype AS itemtype, tl.location AS locationid,
-                NVL(tl.isclosed, 'F') AS isclosed,
-                tl.quantity AS quantityordered,
-                NVL(tl.quantityshiprecv, 0) AS quantityshipped,
-                NVL(tl.quantitycommitted, 0) AS quantitycommitted
-            FROM transaction t
-            LEFT JOIN transactionline tl ON tl.transaction = t.id
-                AND tl.mainline = 'F' AND tl.taxline = 'F' AND tl.item IS NOT NULL
-            LEFT JOIN item i ON i.id = tl.item
-            WHERE t.type = 'SalesOrd'
-                AND t.status NOT IN ('C', 'G', 'H')
-                AND (t.{fields.CustomerOrderStatus} IS NULL
-                    OR t.{fields.CustomerOrderStatus} NOT IN ({string.Join(",", excluded)}))
-            ORDER BY t.id, tl.id";
-
+    SELECT t.id AS orderid, t.tranid AS ordernumber,
+        t.{fields.CustomerOrderStatus} AS customerorderstatusid,
+        NVL(t.{fields.ReadyToFulfill}, 'F') AS readytofulfill,
+        NVL(t.{fields.FirstShipment}, 'F') AS firstshipment,
+        CASE WHEN t.{fields.WholesaleFlag} = 4 THEN 'T' ELSE 'F' END AS iswholesale,
+        tl.id AS lineid,
+        tl.item AS itemid,
+        BUILTIN.DF(tl.item) AS itemname,
+        tl.itemtype AS itemtype,
+        tl.location AS locationid,
+        NVL(tl.isclosed, 'F') AS isclosed,
+        tl.quantity AS quantityordered,
+        NVL(tl.quantityshiprecv, 0) AS quantityshipped,
+        NVL(tl.quantitycommitted, 0) AS quantitycommitted
+    FROM transaction t
+    LEFT JOIN transactionline tl ON tl.transaction = t.id
+        AND tl.mainline = 'F'
+        AND tl.taxline = 'F'
+        AND tl.item IS NOT NULL
+    WHERE t.type = 'SalesOrd'
+        AND t.status NOT IN ('C', 'G', 'H')
+        AND (
+            t.{fields.CustomerOrderStatus} IS NULL
+            OR t.{fields.CustomerOrderStatus}
+                NOT IN ({string.Join(",", excluded)})
+        )
+    ORDER BY t.id, tl.id";
         return await RunSuiteQlAsync(http, baseUrl, query);
     }
 
@@ -965,7 +977,7 @@ internal static class Program
             {
                 throw new InvalidOperationException($"Duplicate line {lineId} on order {orderId}.");
             }
-            bool isShippingItem = ShippingItemIds.Contains(long.Parse(itemId, System.Globalization.CultureInfo.InvariantCulture));
+            bool isShippingItem = !ReadValue(row, "itemtype", true).Equals("InvtPart", StringComparison.OrdinalIgnoreCase); 
             string type = ReadValue(row, "itemtype", true);
             string itemName = ReadValue(row, "itemname", true);
             if (string.IsNullOrWhiteSpace(type) && !isShippingItem)
@@ -1104,11 +1116,15 @@ internal static class Program
         string unsignedJwt = $"{encodedHeader}.{encodedPayload}";
 
         using var rsa = RSA.Create();
-
-        //string privateKey = await File.ReadAllTextAsync(privateKeyPath);
-        //Uncomment for local testing.
-
-        string privateKey = privateKeyPath;
+        string privateKey;
+        if (isDebug)
+        {
+            privateKey = await File.ReadAllTextAsync(privateKeyPath);
+        }
+        else
+        {
+            privateKey = privateKeyPath;
+        }
         rsa.ImportFromPem(privateKey);
 
         byte[] signature = rsa.SignData(Encoding.UTF8.GetBytes(unsignedJwt), HashAlgorithmName.SHA256, RSASignaturePadding.Pss);
